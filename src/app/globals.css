@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --felt: #0d4f2a;
+  --felt-dark: #0a3d20;
+  --bg: #0f1a12;
+  --surface: #1e2d20;
+  --surface-light: #2a3d2c;
+  --primary: #2ecc71;
+  --gold: #f1c40f;
+  --danger: #e74c3c;
+  --text: #f0f4f0;
+  --text-muted: #5a705a;
+  --card-front: #faf8f0;
+  --card-border: #d4c9a8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 3px; }
+
+/* Card styles */
+.card-face {
+  background: var(--card-front);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-face:hover:not(.disabled) {
+  transform: translateY(-8px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+}
+
+.card-selected {
+  transform: translateY(-12px) !important;
+  box-shadow: 0 0 0 3px var(--gold), 0 8px 20px rgba(0,0,0,0.5) !important;
+}
+
+.card-back {
+  background: #1a4a2e;
+  border: 1px solid #2d7a4a;
+  border-radius: 8px;
+}
+
+/* Felt table */
+.felt-table {
+  background: radial-gradient(ellipse at center, #0d5c30 0%, #0a3d20 100%);
+  border: 2px solid #1a6b3a;
+}
+
+@keyframes pulse-turn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(46, 204, 113, 0); }
+}
+
+.turn-indicator { animation: pulse-turn 1.5s infinite; }
