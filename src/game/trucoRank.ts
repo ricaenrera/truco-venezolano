@@ -1,6 +1,7 @@
 import type { Card, Baza, PlayedCard } from './types';
 import type { PericopalosInfo } from './deck';
 import { isPerico } from './deck';
+import { TRUCO_NO_QUIERO_POINTS, TRUCO_QUIERO_POINTS } from './rules';
 
 // Jerarquía del Truco Venezolano (índice menor = carta más fuerte)
 const TRUCO_ORDER: Array<{ number: number; suit: string | null }> = [
@@ -73,17 +74,4 @@ export function determineBazaWinner(
 }
 
 // Puntos de "no quiero" para truco por nivel de canto
-export const TRUCO_NO_QUIERO_POINTS: Record<string, number> = {
-  truco:      1,
-  retruco:    3,
-  vale_nueve: 6,
-  vale_juego: 9,
-};
-
-// Puntos de "quiero" para truco por nivel de canto
-export const TRUCO_QUIERO_POINTS: Record<string, number> = {
-  truco:      3,
-  retruco:    6,
-  vale_nueve: 9,
-  // vale_juego = puntos para ganar (calculado dinámicamente)
-};
+// TRUCO_NO_QUIERO_POINTS and TRUCO_QUIERO_POINTS are provided by src/game/rules.ts

@@ -1,7 +1,9 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/store/gameStore';
 import type { Card, CantoType, CantoResponse, EnvidoCanto } from '@/game/types';
+import { playCardSound, speakCanto, speakPiedras } from '@/utils/sounds';
 import CardComponent from './CardComponent';
 import ScoreBoard from './ScoreBoard';
 import CantoButtons from './CantoButtons';
@@ -12,7 +14,8 @@ interface GameTableProps {
 }
 
 export default function GameTable({ myId }: GameTableProps) {
-  const { game, dispatch, notification } = useGameStore();
+  const router = useRouter();
+  const { game, dispatch, notification, reset } = useGameStore();
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   if (!game?.hand) return null;
@@ -31,6 +34,7 @@ export default function GameTable({ myId }: GameTableProps) {
   const handleCardClick = (card: Card) => {
     if (!canPlay) return;
     if (selectedCard === card.id) {
+      playCardSound();
       dispatch({ type: 'PLAY_CARD', playerId: myId, payload: { card } }, myId);
       setSelectedCard(null);
     } else {
@@ -39,12 +43,14 @@ export default function GameTable({ myId }: GameTableProps) {
   };
 
   const handleCanto = (type: CantoType) => {
+    speakCanto(type, true);
     if (type === 'truco' || type === 'retruco' || type === 'vale_nueve' || type === 'vale_juego') {
       dispatch({ type: 'SING_TRUCO', playerId: myId, payload: { canto: type } }, myId);
     } else if (type === 'flor') {
       dispatch({ type: 'SING_FLOR', playerId: myId }, myId);
     } else if (type === 'mazo') {
       if (confirm('¿Seguro que quieres irte al mazo?')) {
+        speakCanto('mazo', true);
         dispatch({ type: 'GO_TO_MAZO', playerId: myId }, myId);
       }
     } else {
@@ -53,13 +59,32 @@ export default function GameTable({ myId }: GameTableProps) {
   };
 
   const handleRespond = (response: CantoResponse, piedrasPoints?: number) => {
+    if (response === 'las_piedras' && piedrasPoints) {
+      speakPiedras(piedrasPoints, true);
+    } else {
+      speakCanto(response, true);
+    }
     dispatch({ type: 'RESPOND_CANTO', playerId: myId, payload: { response, piedrasPoints } }, myId);
+  };
+
+  const handleExit = () => {
+    if (confirm('¿Salir al menú principal? La partida actual se perderá.')) {
+      reset();
+      router.push('/home');
+    }
   };
 
   const myTeam = me?.team ?? 0;
 
   return (
-    <div className="h-screen flex flex-col felt-table overflow-hidden select-none">
+    <div className="h-screen flex flex-col felt-table overflow-hidden select-none relative">
+      <button
+        type="button"
+        onClick={handleExit}
+        className="absolute bottom-4 right-4 z-30 px-3 py-2 rounded-full bg-red-600 text-white text-xs font-semibold shadow-lg hover:bg-red-500 transition-colors"
+      >
+        Menú principal
+      </button>
       {/* Score */}
       <ScoreBoard scores={game.teamScores} maxPoints={game.maxPoints} />
 

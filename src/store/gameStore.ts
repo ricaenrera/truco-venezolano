@@ -36,7 +36,7 @@ function buildNotification(action: GameAction, players: GameState['players']): s
     return `${n}: ¡${labels[action.payload?.canto ?? ''] ?? action.payload?.canto}!`;
   }
   if (action.type === 'SING_ENVIDO') {
-    const labels: Record<string, string> = { envido: 'Envido', real_envido: 'Real envido', falta_envido: 'Falta envido' };
+    const labels: Record<string, string> = { envido: 'Envido', falta_envido: 'Falta Envido' };
     return `${n}: ¡${labels[action.payload?.canto ?? ''] ?? action.payload?.canto}!`;
   }
   if (action.type === 'SING_FLOR') return `${n}: ¡Flor!`;
@@ -81,11 +81,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return;
     const newState = applyAction(game, action);
 
-    // Notificación para acciones de la IA
+    // Notificación + voz para acciones de la IA
     const notif = buildNotification(action, game.players);
     set({ game: newState, ...(notif ? { notification: notif } : {}) });
     if (notif) {
       setTimeout(() => set((s) => s.notification === notif ? { notification: null } : {}), 3000);
+      // Narrar el canto de la IA con voz diferente al humano
+      if (typeof window !== 'undefined') {
+        const { speakCanto, speakPiedras } = await import('../utils/sounds');
+        const resp = action.payload?.response as string | undefined;
+        const canto = action.payload?.canto as string | undefined;
+        const pts = action.payload?.piedrasPoints as number | undefined;
+        if (resp === 'las_piedras' && pts) speakPiedras(pts, false);
+        else if (resp) speakCanto(resp, false);
+        else if (canto) speakCanto(canto, false);
+        else if (action.type === 'SING_FLOR') speakCanto('flor', false);
+        else if (action.type === 'GO_TO_MAZO') speakCanto('mazo', false);
+      }
+    }
+
+    // Sonido de carta cuando la IA juega
+    if (action.type === 'PLAY_CARD' && typeof window !== 'undefined') {
+      const aiPlayer = game.players.find((p) => p.id === action.playerId);
+      if (aiPlayer && !aiPlayer.isHuman) {
+        const { playCardSound } = await import('../utils/sounds');
+        playCardSound();
+      }
     }
 
     if (game.roomId) {
@@ -95,10 +116,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Avanzar a la siguiente mano automáticamente (desde el store, no desde React)
     if (newState.phase === 'hand_end') {
+      // Si hay resultado de envido, dar más tiempo para verlo
+      const delay = newState.hand?.envidoResult ? 4000 : 1800;
       setTimeout(() => {
         const current = get().game;
         if (current?.phase === 'hand_end') get().startNextHand();
-      }, 1800);
+      }, delay);
       return; // no programar IA durante hand_end
     }
 

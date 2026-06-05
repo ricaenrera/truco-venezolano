@@ -87,7 +87,6 @@ export default function CantoButtons({ game, myPlayerId, isMyTurn, onCanto, onRe
       {canEnvido && !iHaveFlor && (
         <>
           <Btn label="Envido" color="bg-blue-600 hover:bg-blue-500" onClick={() => onCanto('envido')} />
-          <Btn label="Real Envido" color="bg-blue-700 hover:bg-blue-600" onClick={() => onCanto('real_envido')} />
           <Btn label="Falta Envido" color="bg-blue-800 hover:bg-blue-700" onClick={() => onCanto('falta_envido')} />
         </>
       )}

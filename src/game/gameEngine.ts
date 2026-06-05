@@ -4,11 +4,11 @@ import type {
   TrucoCanto, EnvidoCanto, CantoResponse, GameMode,
 } from './types';
 import { buildDeck, deal, resolvePericopalos, isPerico, isPerica } from './deck';
-import { determineBazaWinner, TRUCO_NO_QUIERO_POINTS, TRUCO_QUIERO_POINTS } from './trucoRank';
+import { determineBazaWinner } from './trucoRank';
+import { TRUCO_NO_QUIERO_POINTS, TRUCO_QUIERO_POINTS } from './rules';
 import {
-  calculateEnvido, envidoValue, hasFlor, hasFlorReservada, hasFlorConPericopalos,
+  calculateEnvido, envidoValue, hasFlor, hasFlorReservada,
   florScore, faltaEnvidoPoints, valeJuegoPoints, isPriving,
-  ENVIDO_NO_QUIERO_POINTS,
 } from './envido';
 import type { PericopalosInfo } from './deck';
 import { generateId } from '../utils/helpers';
@@ -137,6 +137,13 @@ export function startHand(state: GameState): GameState {
     empardeCard: null,
     empardeRound: null,
     envidoResult: null,
+    envidoAwarded: false,
+    cantandoTeam: null,
+    cantandoRequired: false,
+    cantandoMaxEnvido: null,
+    privoByTeam: null,
+    priveActive: false,
+    cantandoLostRight: false,
   };
 
   // Flor reservada suma 5 puntos automáticos al inicio
@@ -145,6 +152,25 @@ export function startHand(state: GameState): GameState {
     const player = state.players.find((p) => p.id === florReservadaPlayerId)!;
     newScores = [...state.teamScores] as [number, number];
     newScores[player.team] += 5;
+  }
+
+  // Detectar modo "Cantando" (Estar Privando)
+  // Aplica para partidas en 4 jugadores (o 2 jugadores también si aplica)
+  const teamMaxEnvido: [number, number] = [0, 0];
+  for (const p of state.players) {
+    const v = calculateEnvido(handMap[p.id], peri);
+    teamMaxEnvido[p.team] = Math.max(teamMaxEnvido[p.team], v);
+  }
+  const cantarTeam = state.teamScores[0] === state.maxPoints - 1 ? 0
+    : state.teamScores[1] === state.maxPoints - 1 ? 1
+    : null;
+  if (cantarTeam !== null) {
+    hand.cantandoTeam = cantarTeam;
+    hand.cantandoRequired = true;
+    hand.cantandoMaxEnvido = teamMaxEnvido;
+    hand.privoByTeam = null;
+    hand.priveActive = false;
+    hand.cantandoLostRight = false;
   }
 
   return { ...state, teamScores: newScores, phase: 'playing', hand };
@@ -175,6 +201,14 @@ function handlePlayCard(state: GameState, action: GameAction): GameState {
   const hand = state.hand!;
   const card = action.payload?.card;
   if (!card || hand.currentTurnPlayerId !== action.playerId) return state;
+
+  // Si el equipo está "cantando" y aún no cantó su envido, jugar una carta
+  // les hace perder el derecho a cobrar automáticamente.
+  const player = state.players.find((p) => p.id === action.playerId)!;
+  if (hand.cantandoRequired && hand.cantandoTeam === player.team && !hand.priveActive && !hand.envidoCanto) {
+    hand.cantandoRequired = false;
+    hand.cantandoLostRight = true;
+  }
 
   const playerHand = hand.hands[action.playerId];
   const cardIdx = playerHand.findIndex((c) => c.id === card.id);
@@ -225,18 +259,16 @@ function resolveBaza(state: GameState, baza: PlayedCard[]): GameState {
   let nextRound = currentRound as 1 | 2 | 3;
 
   if (isEmparde) {
-    // Emparde: la carta del medio queda oculta, se salta a la siguiente ronda
-    // En 2j: se toma la carta "del medio" (la del pie que fue empate)
     empardeCard = baza[baza.length - 1].card;
     empardeRound = currentRound as 1 | 2;
 
-    if (currentRound === 1) {
-      // Saltar ronda 2 directamente a ronda 3
+    // 2 jugadores: mesa nula → seguir con la siguiente mesa normalmente
+    // 4 jugadores con emparde en 1ª mesa: saltar a la 3ª (cartas ocultas)
+    if (state.players.length === 4 && currentRound === 1) {
       nextRound = 3;
     } else {
-      nextRound = 3;
+      nextRound = (currentRound < 3 ? currentRound + 1 : 3) as 1 | 2 | 3;
     }
-    // Quien sigue en mano (el primero en la ronda original)
     nextTurnId = hand.manoPlayerId;
   } else {
     // El ganador de esta baza empieza la siguiente
@@ -307,7 +339,10 @@ function handleSingEnvido(state: GameState, action: GameAction): GameState {
   if (canto === 'falta_envido') {
     points = faltaEnvidoPoints(state.teamScores, state.maxPoints);
   } else if (canto === 'las_piedras') {
-    points = action.payload?.piedrasPoints ?? 3;
+    // puntos = puntos previos del envido (si existían) + piedras elegidas
+    const prev = hand.envidoCanto?.points ?? 2;
+    const chosen = action.payload?.piedrasPoints ?? 3;
+    points = prev + chosen;
   } else if (canto === 'envido_envido') {
     points = (hand.envidoCanto?.points ?? 2) + 2;
   } else {
@@ -384,10 +419,10 @@ function handleSingPrive(state: GameState, action: GameAction): GameState {
     byPlayerId: action.playerId,
     byTeam: player.team,
     points: 1, // el prive vale el 1 punto que le falta
-    previousAccepted: myPrive, // el puntaje de prive
+    previousAccepted: myPrive, // el puntaje de prive (guardado para referencia)
   };
 
-  return { ...state, phase: 'canto', hand: { ...hand, envidoCanto: pending } };
+  return { ...state, phase: 'canto', hand: { ...hand, envidoCanto: pending, privoByTeam: player.team } };
 }
 
 // ─── Barajo ───────────────────────────────────────────────────────────────────
@@ -502,9 +537,35 @@ function respondEnvido(state: GameState, response: CantoResponse, player: Player
   }
 
   if (response === 'no_quiero') {
-    const points = ENVIDO_NO_QUIERO_POINTS[canto.type] ?? 1;
+    // Rechazar el canto
+    if (canto.type === 'prive') {
+      // Si se rechazó un Privo, el que cantó Privo recibe 2 puntos (1 envido + 1 truco no querido)
+      const newScores: [number, number] = [...state.teamScores] as [number, number];
+      newScores[canto.byTeam] += 2;
+      return checkHandEnd({
+        ...state,
+        phase: 'playing',
+        teamScores: newScores,
+        hand: { ...hand, envidoCanto: null, envidoResolved: true, florResolved: true },
+      });
+    }
+
+    let points: number;
+    let receivingTeam: 0 | 1;
+
+    if (canto.previousAccepted > 0) {
+      // Rechazar una escalación (quiero y envido / falta / piedras):
+      // el que rechazó se lleva los puntos ya aceptados antes de la escalación
+      points = canto.previousAccepted;
+      receivingTeam = player.team;
+    } else {
+      // Rechazar el envido original: el cantante se lleva 1 punto
+      points = 1;
+      receivingTeam = canto.byTeam;
+    }
+
     const newScores: [number, number] = [...state.teamScores] as [number, number];
-    newScores[canto.byTeam] += points;
+    newScores[receivingTeam] += points;
 
     return checkHandEnd({
       ...state,
@@ -516,17 +577,9 @@ function respondEnvido(state: GameState, response: CantoResponse, player: Player
 
   if (response === 'quiero') {
     if (canto.type === 'prive') {
-      const myScore = calculateEnvido(hand.hands[player.id] ?? [], pericopalos);
-      const theirScore = canto.previousAccepted;
-      const winner: 0 | 1 = myScore >= theirScore ? player.team : canto.byTeam;
-      const newScores: [number, number] = [...state.teamScores] as [number, number];
-      newScores[winner] += 1;
-      return checkHandEnd({
-        ...state,
-        phase: 'playing',
-        teamScores: newScores,
-        hand: { ...hand, envidoCanto: null, envidoResolved: true },
-      });
+      // El Privo aceptado: no asignar puntos ahora; marcar que se jugará el Truco
+      const newHand = { ...hand, envidoCanto: null, envidoResolved: true, priveActive: true, privoByTeam: canto.byTeam, envidoAccepted: 1 };
+      return { ...state, phase: 'playing', hand: newHand };
     }
 
     if (canto.type === 'flor') {
@@ -552,6 +605,29 @@ function respondEnvido(state: GameState, response: CantoResponse, player: Player
     const score1 = Math.max(...team1Players.map((p) => calculateEnvido(hand.hands[p.id] ?? [], pericopalos)));
     const winner: 0 | 1 = score0 >= score1 ? 0 : 1;
     const newScores: [number, number] = [...state.teamScores] as [number, number];
+    // Si el canto es 'las_piedras', aplazar la asignación de puntos hasta el final de la mano
+    if (canto.type === 'las_piedras') {
+      // Guardar resultado del envido para asignarlo al final de la mano
+      const envidoCards: Record<string, Card[]> = {};
+      for (const p of state.players) envidoCards[p.id] = getBestEnvidoCards(hand.hands[p.id] ?? [], pericopalos);
+      const envidoResult = {
+        teamScores: [score0, score1] as [number, number],
+        envidoCards,
+        winner,
+        points: canto.points,
+      };
+
+      return {
+        ...checkHandEnd({
+          ...state,
+          phase: 'playing',
+          teamScores: newScores,
+          hand: { ...hand, envidoCanto: null, envidoResolved: true, envidoAccepted: canto.points, envidoResult },
+        }),
+        // ensure we keep the envidoResult in hand
+      };
+    }
+
     newScores[winner] += canto.points;
 
     // Guardar solo las cartas que aportan al envido de cada jugador
@@ -580,7 +656,8 @@ function respondEnvido(state: GameState, response: CantoResponse, player: Player
   if (escalation === 'falta_envido') {
     points = faltaEnvidoPoints(state.teamScores, state.maxPoints);
   } else if (escalation === 'las_piedras') {
-    points = piedrasPoints ?? canto.points + 3;
+    // Escalación a 'las_piedras': puntos = puntos actuales del envido + piedras elegidas
+    points = canto.points + (piedrasPoints ?? 3);
   } else if (escalation === 'envido_envido') {
     points = canto.points + 2;
   } else {
@@ -637,32 +714,89 @@ function checkHandEnd(state: GameState): GameState {
 
   const team0Bazas = hand.bazas.filter((b) => b.winnerTeam === 0).length;
   const team1Bazas = hand.bazas.filter((b) => b.winnerTeam === 1).length;
+  const empardes   = hand.bazas.filter((b) => b.isEmparde).length;
   const totalBazas = hand.bazas.length;
+
+  // "Primera manda": quien ganó la primera mesa DECISIVA (no nula) tiene ventaja
+  // en cualquier emparde posterior.
+  const firstWin = hand.bazas.find((b) => b.winnerTeam !== null);
+  const firstWinner: 0 | 1 | null = firstWin?.winnerTeam ?? null;
+
+  // Máximo de bazas posibles según el modo de juego
+  // 4j con emparde en 1ª → salta a 3ª → máx 2 bazas
+  const is4pSkip = state.players.length === 4 && hand.empardeRound === 1;
+  const maxBazas = is4pSkip ? 2 : 3;
 
   let handWinner: 0 | 1 | null = null;
 
-  if (team0Bazas >= 2) handWinner = 0;
-  else if (team1Bazas >= 2) handWinner = 1;
-  else if (totalBazas === 3) {
+  if (team0Bazas >= 2) {
+    // Gana con 2 mesas directas
+    handWinner = 0;
+  } else if (team1Bazas >= 2) {
+    handWinner = 1;
+  } else if (empardes >= 1 && firstWinner !== null) {
+    // REGLA "PRIMERA MANDA": hay al menos un emparde y existe un ganador de la
+    // primera mesa decisiva → ese equipo gana la mano en cualquier situación de parda.
+    // Cubre: 1-0+parda, 0-1+parda, 1-1+parda (3ª parda).
+    handWinner = firstWinner;
+  } else if (empardes >= 1 && firstWinner === null && totalBazas >= maxBazas) {
+    // Todas las mesas quedaron pardas (triple emparde o doble en 4j con salto):
+    // gana el equipo que sea MANO.
+    const manoPlayer = state.players.find((p) => p.id === hand.manoPlayerId);
+    handWinner = manoPlayer?.team ?? 0;
+  } else if (empardes === 0 && totalBazas >= maxBazas) {
+    // Todas las bazas jugadas sin ningún emparde (caso estándar)
     if (team0Bazas > team1Bazas) handWinner = 0;
     else if (team1Bazas > team0Bazas) handWinner = 1;
     else {
-      // Triple empate: gana el jugador que es mano
       const manoPlayer = state.players.find((p) => p.id === hand.manoPlayerId);
       handWinner = manoPlayer?.team ?? 0;
     }
   }
 
   if (handWinner !== null) {
-    // Si nadie cantó truco → 1 punto. Si se cantó → los puntos aceptados.
     const trucoPoints = hand.trucoAccepted > 0 ? hand.trucoAccepted : 1;
     const newScores: [number, number] = [...state.teamScores] as [number, number];
     newScores[handWinner] += trucoPoints;
 
+    // Si hubo un Prive aceptado y se jugó el truco, el ganador obtiene +1 por Envido
+    if (hand.priveActive) {
+      newScores[handWinner] += 1;
+    }
+
+    // Verificación obligatoria si estaba en modo 'Cantando' y hubo Privo
+    if (hand.cantandoTeam !== undefined && hand.cantandoTeam !== null && hand.privoByTeam !== null) {
+      const cantarTeam = hand.cantandoTeam;
+      const privoTeam = hand.privoByTeam;
+      const opponentWonTruco = handWinner === privoTeam;
+
+      // Solo verificar si el equipo que fue cantado perdió el Truco (el contrario ganó)
+      // y la mano no terminó por mazo y no perdieron su derecho por jugar carta
+      if (opponentWonTruco && !hand.mazoPlayerId && !hand.cantandoLostRight) {
+        const maxima = hand.cantandoMaxEnvido ?? [0, 0];
+        const privoMax = maxima[privoTeam];
+        const cantarMax = maxima[cantarTeam];
+
+        // Si el equipo privo NO tenía envite mayor, el equipo cantando gana la partida
+        if (privoMax <= cantarMax) {
+          const newScores2: [number, number] = [...state.teamScores] as [number, number];
+          newScores2[cantarTeam] = state.maxPoints;
+          return { ...state, teamScores: newScores2, phase: 'game_over', winner: cantarTeam };
+        }
+      }
+    }
+
+    // Si existe un resultado de envido pendiente (p. ej. las_piedras), asignarlo ahora
+    if (hand.envidoResult && !hand.envidoAwarded) {
+      newScores[hand.envidoResult.winner] += hand.envidoResult.points;
+      // Marcar como adjudicado
+      hand.envidoAwarded = true;
+    }
+
     if (newScores[0] >= state.maxPoints) return { ...state, teamScores: newScores, phase: 'game_over', winner: 0 };
     if (newScores[1] >= state.maxPoints) return { ...state, teamScores: newScores, phase: 'game_over', winner: 1 };
 
-    return { ...state, teamScores: newScores, phase: 'hand_end' };
+    return { ...state, teamScores: newScores, phase: 'hand_end', hand };
   }
 
   return state;

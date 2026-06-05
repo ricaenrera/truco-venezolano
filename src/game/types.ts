@@ -31,7 +31,6 @@ export type TrucoCanto = 'truco' | 'retruco' | 'vale_nueve' | 'vale_juego';
 export type EnvidoCanto =
   | 'envido'
   | 'envido_envido'    // quiero y envido (sube 2 más)
-  | 'real_envido'      // alias de quiero y envido en algunos contextos
   | 'falta_envido'
   | 'las_piedras';     // X piedras libremente elegidas
 
@@ -111,6 +110,15 @@ export interface HandState {
     winner: 0 | 1;
     points: number;
   } | null;
+  // Marca para evitar volver a asignar puntos de envido al final de la mano
+  envidoAwarded?: boolean;
+  // Modo "Cantando" (Estar Privando)
+  cantandoTeam?: 0 | 1 | null;
+  cantandoRequired?: boolean; // el equipo debe cantar su envite al iniciar
+  cantandoMaxEnvido?: [number, number] | null; // max envido por equipo al inicio
+  privoByTeam?: 0 | 1 | null; // equipo que declaró Privo
+  priveActive?: boolean; // si el privo fue aceptado y se jugará Truco
+  cantandoLostRight?: boolean; // si el equipo cantando jugó carta sin cantar
 }
 
 // ─── Full game state ──────────────────────────────────────────────────────────

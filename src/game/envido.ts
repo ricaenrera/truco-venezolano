@@ -1,14 +1,15 @@
 import type { Card, Suit } from './types';
 import type { PericopalosInfo } from './deck';
 import { isPerico, isPerica, isFigure } from './deck';
+import { ENVIDO_NO_QUIERO_POINTS } from './rules';
 
 // ─── Valor de carta en envido ─────────────────────────────────────────────────
 
 export function envidoValue(card: Card, pericopalos: PericopalosInfo): number {
-  if (isPerico(card, pericopalos)) return 30;
-  if (isPerica(card, pericopalos)) return 29;
-  if (isFigure(card)) return 0;
-  return card.number;
+  if (isPerico(card, pericopalos)) return 10; // vale 10, el +20 se suma si forma par
+  if (isPerica(card, pericopalos)) return 9;  // vale 9, el +20 se suma si forma par
+  if (isFigure(card)) return 0;               // 10, 11, 12 sin ser perico/perica = 0
+  return card.number;                          // 1-7 a valor nominal
 }
 
 // ─── Detección de flor (incluyendo Perico/Perica como comodines de pinta) ─────
@@ -127,11 +128,4 @@ export function valeJuegoPoints(scores: [number, number], maxPoints: number): nu
 
 // ─── Tablas de puntos ─────────────────────────────────────────────────────────
 
-export const ENVIDO_NO_QUIERO_POINTS: Record<string, number> = {
-  envido:        1,
-  envido_envido: 2,
-  real_envido:   2,
-  falta_envido:  1,
-  las_piedras:   1,
-  flor:          1,
-};
+// ENVIDO_NO_QUIERO_POINTS is provided by src/game/rules.ts

@@ -1,17 +1,13 @@
 import type { GameState, GameAction, Card, TrucoCanto, EnvidoCanto } from './types';
 import {
-  calculateEnvido, hasFlor, hasFlorConPericopalos,
+  calculateEnvido, hasFlor,
   hasFlorReservada, faltaEnvidoPoints, isPriving,
 } from './envido';
 import { trucoRank, effectiveTrucoRank } from './trucoRank';
 import { canSingEnvido, canSingFlor, canSingPrive, canSingTruco } from './gameEngine';
+import { BLUFF_CHANCE, ENVIDO_MIN_SING, ENVIDO_FALTA_THRESHOLD, ENVIDO_ACCEPT_THRESHOLD } from './rules';
 
-// Factor de aleatoriedad: 12% de probabilidad de farol o no cantar teniendo buenas cartas
-const BLUFF_CHANCE = 0.12;
-
-function bluff(): boolean {
-  return Math.random() < BLUFF_CHANCE;
-}
+function bluff(): boolean { return Math.random() < BLUFF_CHANCE; }
 
 // ─── Punto de entrada principal ───────────────────────────────────────────────
 
@@ -83,11 +79,11 @@ function decideSingEnvido(
 
   const score = calculateEnvido(myCards, pericopalos);
 
-  // No cantar si puntaje < 20
-  if (score < 20) return null;
+  // No cantar si puntaje < ENVIDO_MIN_SING
+  if (score < ENVIDO_MIN_SING) return null;
 
   // Falta envido si puntaje muy alto
-  if (score >= 28 && !bluff()) {
+  if (score >= ENVIDO_FALTA_THRESHOLD && !bluff()) {
     return {
       type: 'SING_ENVIDO',
       playerId: aiPlayerId,
@@ -208,7 +204,7 @@ function respondToCanto(state: GameState, aiPlayerId: string): GameAction | null
     const canto = hand.envidoCanto!;
 
     // Subir a falta envido si puntaje muy alto
-    if (score >= 28 && canto.type === 'envido' && !bluff()) {
+    if (score >= ENVIDO_FALTA_THRESHOLD && canto.type === 'envido' && !bluff()) {
       return {
         type: 'RESPOND_CANTO',
         playerId: aiPlayerId,
@@ -216,16 +212,15 @@ function respondToCanto(state: GameState, aiPlayerId: string): GameAction | null
       };
     }
 
-    // Subir a envido si el canto fue solo envido y tengo más de 25
-    if (score >= 25 && canto.type === 'envido' && !bluff()) {
+    // Subir a envido si el canto fue solo envido y tengo más de ENVIDO_ACCEPT_THRESHOLD
+    if (score >= ENVIDO_ACCEPT_THRESHOLD && canto.type === 'envido' && !bluff()) {
       return {
         type: 'RESPOND_CANTO',
         playerId: aiPlayerId,
         payload: { response: 'envido_envido' },
       };
     }
-
-    const shouldAccept = score >= 25 && !bluff();
+    const shouldAccept = score >= ENVIDO_ACCEPT_THRESHOLD && !bluff();
     return {
       type: 'RESPOND_CANTO',
       playerId: aiPlayerId,
