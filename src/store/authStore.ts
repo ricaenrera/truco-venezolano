@@ -1,6 +1,6 @@
 'use client';
 import { create } from 'zustand';
-import { supabase } from '../supabase/client';
+import { getSupabase } from '../supabase/client';
 import { fetchProfile, updateProfile } from '../supabase/queries';
 import type { UserProfile } from '../game/types';
 
@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signIn: async (email, password) => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
     if (error) { set({ loading: false, error: error.message }); return false; }
     set({ user: { id: data.user.id, email: data.user.email! } });
     await get().loadProfile();
@@ -36,7 +36,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signUp: async (email, password, username) => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await getSupabase().auth.signUp({
       email, password, options: { data: { username } },
     });
     if (error) { set({ loading: false, error: error.message }); return false; }
@@ -49,7 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    await getSupabase().auth.signOut();
     set({ user: null, profile: null });
   },
 
@@ -80,14 +80,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 }));
 
 export async function initAuth() {
-  const { data } = await supabase.auth.getSession();
+  const { data } = await getSupabase().auth.getSession();
   if (data.session?.user) {
     const u = data.session.user;
     useAuthStore.setState({ user: { id: u.id, email: u.email! } });
     const profile = await fetchProfile(u.id);
     useAuthStore.setState({ profile });
   }
-  supabase.auth.onAuthStateChange(async (_event, session) => {
+  getSupabase().auth.onAuthStateChange(async (_event, session) => {
     if (session?.user) {
       const u = session.user;
       useAuthStore.setState({ user: { id: u.id, email: u.email! } });

@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { getSupabase } from './client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type Handler = (payload: unknown) => void;
@@ -14,7 +14,7 @@ export function subscribeToRoom(
     onRoomUpdate?: Handler;
   }
 ): RealtimeChannel {
-  const channel = supabase
+  const channel = getSupabase()
     .channel(`room:${roomId}`)
     .on(
       'postgres_changes',
@@ -51,7 +51,7 @@ export function subscribeToGame(
     onMessage?: Handler;
   }
 ): RealtimeChannel {
-  const channel = supabase
+  const channel = getSupabase()
     .channel(`game:${roomId}`)
     .on(
       'postgres_changes',
@@ -81,7 +81,7 @@ export function subscribeToPresence(
   username: string,
   onSync: (presences: Record<string, unknown[]>) => void
 ): RealtimeChannel {
-  const channel = supabase.channel(`presence:${roomId}`, {
+  const channel = getSupabase().channel(`presence:${roomId}`, {
     config: { presence: { key: userId } },
   });
 
@@ -99,5 +99,5 @@ export function subscribeToPresence(
 }
 
 export function unsubscribe(channel: RealtimeChannel): void {
-  supabase.removeChannel(channel);
+  getSupabase().removeChannel(channel);
 }

@@ -1,11 +1,11 @@
-import { supabase } from './client';
+import { getSupabase } from './client';
 import type { UserProfile, Room, RoomPlayer } from '../game/types';
 import { generateRoomCode } from '../utils/helpers';
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
 export async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('profiles')
     .select('*')
     .eq('id', userId)
@@ -28,7 +28,7 @@ export async function updateProfile(
   userId: string,
   updates: { username?: string; avatar_id?: number }
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('profiles')
     .update(updates)
     .eq('id', userId);
@@ -44,7 +44,7 @@ export async function updateStats(
 
   const newStreak = won ? profile.currentStreak + 1 : 0;
 
-  await supabase
+  await getSupabase()
     .from('profiles')
     .update({
       games_played: profile.gamesPlayed + 1,
@@ -65,7 +65,7 @@ export async function createRoom(
 ): Promise<Room | null> {
   const code = generateRoomCode();
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('rooms')
     .insert({
       code,
@@ -83,7 +83,7 @@ export async function createRoom(
 }
 
 export async function fetchRoomByCode(code: string): Promise<Room | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('rooms')
     .select('*, room_players(*, profiles(username, avatar_id))')
     .eq('code', code.toUpperCase())
@@ -94,7 +94,7 @@ export async function fetchRoomByCode(code: string): Promise<Room | null> {
 }
 
 export async function fetchPublicRooms(): Promise<Room[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('rooms')
     .select('*, room_players(*, profiles(username, avatar_id))')
     .eq('status', 'waiting')
@@ -111,14 +111,14 @@ export async function joinRoom(
   userId: string,
   position: 0 | 1 | 2 | 3
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('room_players')
     .upsert({ room_id: roomId, user_id: userId, position, is_ready: false, is_connected: true });
   return !error;
 }
 
 export async function leaveRoom(roomId: string, userId: string): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('room_players')
     .delete()
     .eq('room_id', roomId)
@@ -130,7 +130,7 @@ export async function setReady(
   userId: string,
   ready: boolean
 ): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('room_players')
     .update({ is_ready: ready })
     .eq('room_id', roomId)
@@ -141,13 +141,13 @@ export async function updateRoomStatus(
   roomId: string,
   status: 'waiting' | 'playing' | 'finished'
 ): Promise<void> {
-  await supabase.from('rooms').update({ status, updated_at: new Date().toISOString() }).eq('id', roomId);
+  await getSupabase().from('rooms').update({ status, updated_at: new Date().toISOString() }).eq('id', roomId);
 }
 
 // ─── Game State ───────────────────────────────────────────────────────────────
 
 export async function fetchGameState(roomId: string): Promise<unknown | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('game_state')
     .select('state')
     .eq('room_id', roomId)
@@ -158,7 +158,7 @@ export async function fetchGameState(roomId: string): Promise<unknown | null> {
 }
 
 export async function upsertGameState(roomId: string, state: unknown): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('game_state')
     .upsert({ room_id: roomId, state, updated_at: new Date().toISOString() });
 }
@@ -169,7 +169,7 @@ export async function insertGameAction(
   actionType: string,
   payload: unknown
 ): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('game_actions')
     .insert({ room_id: roomId, user_id: userId, action_type: actionType, payload });
 }
@@ -182,13 +182,13 @@ export async function sendMessage(
   content: string,
   isQuickReply = false
 ): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('messages')
     .insert({ room_id: roomId, user_id: userId, content, is_quick_reply: isQuickReply });
 }
 
 export async function fetchMessages(roomId: string, limit = 50) {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('messages')
     .select('*, profiles(username)')
     .eq('room_id', roomId)
