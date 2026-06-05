@@ -26,30 +26,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signIn: async (email, password) => {
     set({ loading: true, error: null });
-    const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
-    if (error) { set({ loading: false, error: error.message }); return false; }
-    set({ user: { id: data.user.id, email: data.user.email! } });
-    await get().loadProfile();
-    set({ loading: false });
-    return true;
+    try {
+      const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
+      if (error) { set({ loading: false, error: error.message }); return false; }
+      set({ user: { id: data.user.id, email: data.user.email! } });
+      await get().loadProfile();
+      set({ loading: false });
+      return true;
+    } catch {
+      set({ loading: false, error: 'Servicio no disponible. Intenta más tarde.' });
+      return false;
+    }
   },
 
   signUp: async (email, password, username) => {
     set({ loading: true, error: null });
-    const { data, error } = await getSupabase().auth.signUp({
-      email, password, options: { data: { username } },
-    });
-    if (error) { set({ loading: false, error: error.message }); return false; }
-    if (data.user) {
-      set({ user: { id: data.user.id, email: data.user.email! } });
-      await get().loadProfile();
+    try {
+      const { data, error } = await getSupabase().auth.signUp({
+        email, password, options: { data: { username } },
+      });
+      if (error) { set({ loading: false, error: error.message }); return false; }
+      if (data.user) {
+        set({ user: { id: data.user.id, email: data.user.email! } });
+        await get().loadProfile();
+      }
+      set({ loading: false });
+      return true;
+    } catch {
+      set({ loading: false, error: 'Servicio no disponible. Intenta más tarde.' });
+      return false;
     }
-    set({ loading: false });
-    return true;
   },
 
   signOut: async () => {
-    await getSupabase().auth.signOut();
+    try { await getSupabase().auth.signOut(); } catch { /* stub client */ }
     set({ user: null, profile: null });
   },
 
@@ -80,21 +90,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 }));
 
 export async function initAuth() {
-  const { data } = await getSupabase().auth.getSession();
-  if (data.session?.user) {
-    const u = data.session.user;
-    useAuthStore.setState({ user: { id: u.id, email: u.email! } });
-    const profile = await fetchProfile(u.id);
-    useAuthStore.setState({ profile });
-  }
-  getSupabase().auth.onAuthStateChange(async (_event, session) => {
-    if (session?.user) {
-      const u = session.user;
+  try {
+    const { data } = await getSupabase().auth.getSession();
+    if (data.session?.user) {
+      const u = data.session.user;
       useAuthStore.setState({ user: { id: u.id, email: u.email! } });
       const profile = await fetchProfile(u.id);
       useAuthStore.setState({ profile });
-    } else {
-      useAuthStore.setState({ user: null, profile: null });
     }
-  });
+    getSupabase().auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const u = session.user;
+        useAuthStore.setState({ user: { id: u.id, email: u.email! } });
+        const profile = await fetchProfile(u.id);
+        useAuthStore.setState({ profile });
+      } else {
+        useAuthStore.setState({ user: null, profile: null });
+      }
+    });
+  } catch { /* Supabase not configured */ }
 }
